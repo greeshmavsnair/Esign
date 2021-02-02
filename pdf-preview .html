@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <script src="pdf.js"></script>
+    <script src="pdf.worker.js"></script>
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <style type="text/css">
+        #preview-container {
+            margin: 50px auto;
+            width: 1000px;
+        }
+
+        #upload-dialog {
+            padding: 5px;
+            border: 1px solid #336699;
+            background-color: white;
+            color: #336699;
+            background: none;
+            font-size: inherit;
+            font-family: inherit;
+            outline: none;
+            display: inline-block;
+            vertical-align: middle;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        #pdf-file {
+            display: none;
+        }
+
+        #image-file {
+            display: none;
+        }
+
+        #pdf-loader {
+            display: none;
+            vertical-align: middle;
+            color: #cccccc;
+            font-size: 12px;
+        }
+
+        #pdf-preview {
+            display: none;
+            vertical-align: middle;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 2px;
+        }
+
+        #pdf-name {
+            display: none;
+            vertical-align: middle;
+            color: #336699;
+            margin: 0 15px;
+            max-width: 200px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        #upload-button {
+            margin-left: 20px;
+
+            padding: 10px;
+            border: 1px solid #336699;
+            background-color: #336699;
+            color: white;
+            font-size: inherit;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+            border-radius: 2px;
+            float: left;
+
+        }
+
+        #show-pdf-button {
+            width: 150px;
+            display: block;
+            margin: 20px auto;
+        }
+
+        #file-to-upload {
+            display: none;
+        }
+
+        #pdf-main-container {
+            width: 400px;
+            margin: 20px auto;
+        }
+
+        #pdf-loader {
+            display: none;
+            text-align: center;
+            color: #999999;
+            font-size: 13px;
+            line-height: 100px;
+            height: 100px;
+        }
+
+        #pdf-contents {
+            display: none;
+        }
+
+        #pdf-meta {
+            overflow: hidden;
+            margin: 0 0 20px 0;
+        }
+
+        #pdf-buttons {
+            float: left;
+        }
+
+        #page-count-container {
+            float: right;
+        }
+
+        #pdf-current-page {
+            display: inline;
+        }
+
+        #pdf-total-pages {
+            display: inline;
+        }
+
+        #page-loader {
+            height: 100px;
+            line-height: 100px;
+            text-align: center;
+            display: none;
+            color: #999999;
+            font-size: 13px;
+        }
+
+        #div1,
+        #div2 {
+            background-color: #E8E8E8;
+            display: none;
+
+            margin-top: 40px;
+            margin-left: 30px;
+            float: left;
+            width: 200px;
+            height: 1200px;
+            padding: 10px;
+            border: 3px solid black;
+        }
+
+        #drag1 {
+            display: none;
+
+        }
+
+        #div3 {
+            display: none;
+            float: left;
+            width: 150px;
+            height: 150px;
+            margin: 10px;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+ <div class="row">
+    <div class="b" id="div2" ondrop="drop(event)" ondragover="allowDrop(event)">
+        <button id="upload-button">Upload Image</button>
+        <input type="file" id="image-file" accept="image/*">
+        <div id="div3"  class="ui-widget-content">
+            <img id="output_image" draggable="true" height=150px width=150px>
+        </div>
+    </div>
+
+    <div class="c" id="preview-container">
+        <button id="upload-dialog">Choose PDF</button>
+        <input type="file" id="pdf-file" name="pdf" accept="application/pdf" />
+        <div id="pdf-loader">Loading Preview ..</div>
+
+        <div id="pdf-contents">
+            <div id="pdf-meta">
+                <div id="pdf-buttons">
+                    <button id="pdf-prev">Previous</button>
+                    <button id="pdf-next">Next</button>
+                </div>
+
+                <div id="page-count-container">Page <div id="pdf-current-page"></div> of <div id="pdf-total-pages">
+                    </div>
+                </div>
+            </div>
+            <canvas id="pdf-preview" width="900">
+            </canvas>
+        </div>
+
+        <div id="page-loader">Loading page ...</div>
+
+
+        <span id="pdf-name"></span>
+    </div>
+</div>
+
+    <script>
+
+        var _PDF_DOC,
+            _CURRENT_PAGE,
+            _TOTAL_PAGES,
+            _PAGE_RENDERING_IN_PROGRESS = 0,
+            _CANVAS = document.querySelector('#pdf-preview'),
+            _OBJECT_URL
+        event;
+
+        var coordinates = function(element) {
+    element = $(element);
+    var top = element.position().top;
+    var left = element.position().left;
+    $('#pdf-name').text('X: ' + left + ' ' + 'Y: ' + top);
+        }
+
+
+        $('#output_image').draggable({
+    start: function() {
+        coordinates('#output_image');
+    },
+    stop: function() {
+        coordinates('#output_image');
+    }
+});
+        function showPDF(pdf_url) {
+            PDFJS.getDocument({ url: pdf_url }).then(function (pdf_doc) {
+                _PDF_DOC = pdf_doc;
+                // total pages in pdf
+                _TOTAL_PAGES = _PDF_DOC.numPages;
+
+                // Hide the pdf loader and show pdf container
+                document.querySelector("#pdf-loader").style.display = 'none';
+                document.querySelector("#pdf-contents").style.display = 'block';
+                document.querySelector("#pdf-total-pages").innerHTML = _TOTAL_PAGES;
+                document.querySelector("#div2").style.display = 'block';
+
+                // Show the first page
+                showPage(1);
+
+                // destroy previous object url
+                URL.revokeObjectURL(_OBJECT_URL);
+            }).catch(function (error) {
+
+                // error reason
+                alert(error.message);
+            });;
+        }
+
+        function showPage(page_no) {
+            // fetch the page
+            _PDF_DOC.getPage(page_no).then(function (page) {
+
+                _PAGE_RENDERING_IN_PROGRESS = 1;
+                _CURRENT_PAGE = page_no;
+
+                // disable Previous & Next buttons while page is being loaded
+                document.querySelector("#pdf-next").disabled = true;
+                document.querySelector("#pdf-prev").disabled = true;
+
+                // while page is being rendered hide the canvas and show a loading message
+                document.querySelector("#pdf-preview").style.display = 'none';
+                document.querySelector("#page-loader").style.display = 'block';
+
+                // update current page
+                document.querySelector("#pdf-current-page").innerHTML = page_no;
+
+                // set the scale of viewport
+                var scale_required = _CANVAS.width / page.getViewport(1).width;
+
+                // get viewport of the page at required scale
+                var viewport = page.getViewport(scale_required);
+
+                // set canvas height
+                _CANVAS.height = viewport.height;
+
+                var renderContext = {
+                    canvasContext: _CANVAS.getContext('2d'),
+                    viewport: viewport
+                };
+
+                // render the page contents in the canvas
+                page.render(renderContext).then(function () {
+                    document.querySelector("#pdf-preview").style.display = 'inline-block';
+                    document.querySelector("#pdf-loader").style.display = 'none';
+
+                    _PAGE_RENDERING_IN_PROGRESS = 0;
+
+                    // re-enable Previous & Next buttons
+                    document.querySelector("#pdf-next").disabled = false;
+                    document.querySelector("#pdf-prev").disabled = false;
+                    document.querySelector("#page-loader").style.display = 'none';
+
+                });
+            });
+
+
+
+        }
+
+  
+        /* Upload file to server */
+        document.querySelector("#upload-button").addEventListener('click', function () {
+            document.querySelector("#image-file").click();
+
+
+        });
+
+        document.querySelector("#image-file").addEventListener('change', function () {
+
+            var reader = new FileReader();
+            var file = this.files[0];
+
+            reader.onload = function () {
+                var output = document.getElementById('output_image');
+                output.src = reader.result;
+            }
+            reader.readAsDataURL(file);
+            document.querySelector("#div3").style.display = 'block';
+
+            // user selected file
+
+        });
+
+        /* Show Select File dialog */
+        document.querySelector("#upload-dialog").addEventListener('click', function () {
+            document.querySelector("#pdf-file").click();
+        });
+
+        /* Selected File has changed */
+        document.querySelector("#pdf-file").addEventListener('change', function () {
+            // user selected file
+            var file = this.files[0];
+
+            // allowed MIME types
+            var mime_types = ['application/pdf'];
+
+            // Validate whether PDF
+            if (mime_types.indexOf(file.type) == -1) {
+                alert('Error : Incorrect file type');
+                return;
+            }
+
+            // validate file size
+            if (file.size > 10 * 1024 * 1024) {
+                alert('Error : Exceeded size 10MB');
+                return;
+            }
+
+            // hide upload dialog button
+            document.querySelector("#upload-dialog").style.display = 'none';
+
+            // set name of the file
+            document.querySelector("#pdf-name").innerText = file.name;
+            document.querySelector("#pdf-name").style.display = 'inline-block';
+
+            // show  upload buttons now
+            document.querySelector("#upload-button").style.display = 'inline-block';
+
+            // Show the PDF preview loader
+            document.querySelector("#pdf-loader").style.display = 'inline-block';
+
+            // object url of PDF 
+            _OBJECT_URL = URL.createObjectURL(file)
+
+            // send the object url of the pdf to the PDF preview function
+            showPDF(_OBJECT_URL);
+        });
+
+        // click on the "Previous" page button
+        document.querySelector("#pdf-prev").addEventListener('click', function () {
+            if (_CURRENT_PAGE != 1)
+                showPage(--_CURRENT_PAGE);
+        });
+
+        // click on the "Next" page button
+        document.querySelector("#pdf-next").addEventListener('click', function () {
+            if (_CURRENT_PAGE != _TOTAL_PAGES)
+                showPage(++_CURRENT_PAGE);
+        });
+
+
+
+
+
+    </script>
+
+</body>
+
+</html>
